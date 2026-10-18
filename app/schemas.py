@@ -1,4 +1,6 @@
 from typing import Annotated
+from datetime import datetime
+from decimal import Decimal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
 
@@ -67,3 +69,46 @@ class SupplierRead(BaseModel):
     cnpj: str
     email: str
     telefone: str
+
+
+Money = Annotated[
+    Decimal, Field(ge=0, le=Decimal("9999999999.99"), max_digits=12, decimal_places=2)
+]
+ReferenceId = Annotated[int, Field(strict=True, gt=0, le=2147483647)]
+
+
+class ProductInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    nome: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=150)]
+    sku: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=64,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._-]*$",
+    )] = Field(examples=["CANETA-001"])
+    preco_custo: Money = Field(examples=["2.50"])
+    preco_venda: Money = Field(examples=["4.90"])
+    estoque_minimo: Annotated[int, Field(strict=True, ge=0, le=2147483647)] = Field(
+        description="Limite para identificar produtos que precisam de reposicao."
+    )
+    categoria_id: ReferenceId
+    fornecedor_id: ReferenceId
+
+    @field_validator("sku")
+    @classmethod
+    def normalize_sku(cls, value: str) -> str:
+        return value.upper()
+
+
+class ProductRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    nome: str
+    sku: str
+    preco_custo: Decimal
+    preco_venda: Decimal
+    quantidade_em_estoque: int
+    estoque_minimo: int
+    data_cadastro: datetime
+    categoria_id: int
+    fornecedor_id: int

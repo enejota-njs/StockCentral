@@ -102,7 +102,7 @@ def delete_supplier(supplier_id: SupplierId, session: SessionDependency) -> Resp
         session.commit()
     except IntegrityError as exc:
         session.rollback()
-        if getattr(exc.orig, "sqlstate", None) == "23503":
+        if getattr(exc.orig, "sqlstate", None) in {"23001", "23503"}:
             raise HTTPException(
                 status_code=409,
                 detail="Fornecedor vinculado a outros registros nao pode ser excluido.",

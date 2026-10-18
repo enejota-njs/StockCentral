@@ -5,9 +5,10 @@ API de gerenciamento de estoque desenvolvida para o desafio Back-End da Ecomp Jr
 ## Etapa atual
 
 A API possui verificações de funcionamento, conexão com PostgreSQL e CRUD de
-categorias e fornecedores. Há migrações das tabelas e testes automatizados com PostgreSQL real.
-Produtos, movimentações e consultas de estoque serão implementados
-nas próximas etapas. Autenticação ainda não está implementada.
+categorias, fornecedores e produtos. Produtos possuem filtros por categoria,
+fornecedor e estoque mínimo. Há migrações e testes automatizados com PostgreSQL real.
+Movimentações e consultas do histórico serão implementadas nas próximas etapas.
+Autenticação ainda não está implementada.
 
 ## Tecnologias
 
@@ -124,8 +125,8 @@ ordenados por ID.
   que não passam pela API.
 - Uma escrita rejeitada desfaz sua transação. Uma tentativa inválida de edição
   preserva os dados anteriores.
-- Produtos ainda não existem nesta etapa; a relação que bloqueará a exclusão de
-  categorias com produtos será criada na migração de produtos.
+- A exclusão de categorias com produtos vinculados é bloqueada pelo banco e
+  retorna 409. Excluir uma categoria não apaga seus produtos.
 
 | Status | Quando ocorre | Resposta |
 | --- | --- | --- |
@@ -201,8 +202,8 @@ um array ou `[]`. Os limites de paginação são os mesmos das categorias.
 - Campos desconhecidos, campos ausentes ou valores inválidos retornam **422**.
   IDs inexistentes retornam **404**. CNPJ ou email já utilizado retorna **409**, com
   uma mensagem indicando o campo. Uma edição rejeitada mantém os dados anteriores.
-- A relação com produtos será criada na próxima etapa. Quando houver vínculos
-  protegidos por chave estrangeira, a exclusão retornará **409**.
+- A exclusão de fornecedores com produtos vinculados retorna **409**. O banco
+  protege esse vínculo; excluir o fornecedor não apaga seus produtos.
 
 ### Aplicando esta etapa em uma instalação existente
 
@@ -214,9 +215,116 @@ No **PowerShell do VS Code**, na **raiz do projeto**, com o banco em execução:
 ```
 
 O primeiro comando instala também a dependência de validação de email. O segundo
-aplica a migração `0002`, que cria `fornecedores`, preservando `categorias`.
+aplica as migrações pendentes: `0002` cria fornecedores e `0003` cria produtos,
+preservando os cadastros existentes.
 Não precisa entrar na pasta `.venv`: o caminho chama diretamente o Python dela.
-Inicie a API conforme as instruções anteriores e procure **Fornecedores** em `/docs`.
+Inicie a API conforme as instruções anteriores e procure **Fornecedores** e
+**Produtos** em `/docs`.
+
+## Rotas de produtos
+
+Cada produto pertence a uma categoria e a um fornecedor. Os campos `categoria_id`
+e `fornecedor_id` são chaves estrangeiras: apontam para IDs de registros existentes.
+Uma categoria ou um fornecedor pode ter vários produtos.
+
+| Método | Caminho | Entrada | Sucesso |
+| --- | --- | --- | --- |
+| POST | `/produtos` | JSON de cadastro | 201, produto com saldo zero |
+| GET | `/produtos` | Filtros e paginação opcionais | 200, array de produtos ou `[]` |
+| GET | `/produtos/{product_id}` | ID inteiro positivo | 200, produto |
+| PUT | `/produtos/{product_id}` | ID e JSON completo de cadastro | 200, produto atualizado |
+| DELETE | `/produtos/{product_id}` | ID inteiro positivo | 204, corpo vazio |
+
+### Cadastro e edição
+
+Primeiro cadastre uma categoria e um fornecedor. Use os IDs retornados no exemplo
+abaixo, substituindo `1` pelos IDs reais. Todos os sete campos são obrigatórios
+tanto no POST quanto no PUT:
+
+```json
+{
+  "nome": "Caneta azul",
+  "sku": "CANETA-001",
+  "preco_custo": "2.50",
+  "preco_venda": "4.90",
+  "estoque_minimo": 5,
+  "categoria_id": 1,
+  "fornecedor_id": 1
+}
+```
+
+Exemplo de resposta (os IDs e a data são ilustrativos):
+
+```json
+{
+  "id": 1,
+  "nome": "Caneta azul",
+  "sku": "CANETA-001",
+  "preco_custo": "2.50",
+  "preco_venda": "4.90",
+  "quantidade_em_estoque": 0,
+  "estoque_minimo": 5,
+  "data_cadastro": "2026-10-18T12:00:00Z",
+  "categoria_id": 1,
+  "fornecedor_id": 1
+}
+```
+
+- **Nome:** de 1 a 150 caracteres após remover espaços nas pontas.
+- **SKU:** código único, de 1 a 64 caracteres, iniciado por letra ou número.
+  Aceita letras ASCII, números, ponto, hífen e sublinhado. A API remove espaços nas
+  pontas e converte para maiúsculas; `caneta-001` e `CANETA-001` são o mesmo código.
+  O banco exige esse formato e garante a unicidade.
+- **Preços:** de zero a `9999999999.99`, com até duas casas decimais. Usamos
+  `Decimal` no Python e `Numeric(12, 2)` no PostgreSQL para preservar os centavos.
+  A resposta JSON representa preços como strings. Na entrada, envie strings com
+  ponto decimal, como nos exemplos; números JSON também são aceitos. Não existe
+  restrição de venda acima do custo, permitindo descontos e liquidações.
+- **Estoque mínimo:** inteiro entre 0 e 2147483647, indicando o limite de reposição.
+- **Categoria e fornecedor:** IDs inteiros positivos de cadastros existentes.
+  É possível trocar esses vínculos pelo PUT. A FK com `RESTRICT` impede excluir
+  categorias e fornecedores enquanto forem usados por algum produto.
+- **Saldo e data:** gerados pelo servidor, somente leitura. O saldo inicial é
+  zero; a data possui fuso horário. POST e PUT rejeitam `quantidade_em_estoque`,
+  `data_cadastro`, `id` ou qualquer campo extra. PUT não altera saldo nem data.
+  As movimentações que atualizarão o saldo serão implementadas na próxima etapa.
+
+### Filtros
+
+| Parâmetro | Regra |
+| --- | --- |
+| `offset` | Inteiro >= 0; padrão 0 |
+| `limit` | Inteiro de 1 a 100; padrão 50 |
+| `categoria_id` | Somente produtos da categoria informada |
+| `fornecedor_id` | Somente produtos do fornecedor informado |
+| `estoque_baixo` | `true`: saldo <= mínimo; `false`: saldo > mínimo; omitido: todos |
+
+Os filtros podem ser combinados. A filtragem ocorre antes da paginação; a ordem
+é sempre pelo ID. Um filtro sem resultados retorna `[]`, incluindo IDs de
+categoria/fornecedor que não existem. Exemplos:
+
+```text
+GET /produtos?estoque_baixo=true
+GET /produtos?categoria_id=1&fornecedor_id=1&limit=10
+GET /produtos?estoque_baixo=true&offset=10&limit=10
+```
+
+### Erros de produtos
+
+| Status | Situação | Corpo |
+| --- | --- | --- |
+| 404 | Produto inexistente em GET individual, PUT ou DELETE | `{"detail":"Produto nao encontrado."}` |
+| 409 | SKU já utilizado | `{"detail":"Ja existe um produto com esse SKU."}` |
+| 409 | Exclusão impedida por vínculo protegido | `{"detail":"Produto vinculado a outros registros nao pode ser excluido."}` |
+| 422 | Categoria inexistente no POST ou PUT | `{"detail":"Categoria informada nao existe."}` |
+| 422 | Fornecedor inexistente no POST ou PUT | `{"detail":"Fornecedor informado nao existe."}` |
+| 422 | Campos, ID ou filtros inválidos | `detail` contém a lista de erros do FastAPI, como no exemplo de categorias |
+| 503 | Falha operacional de banco | `{"detail":"Banco de dados indisponivel."}` |
+| 500 | Outro erro de banco | `{"detail":"Erro interno ao acessar o banco de dados."}` |
+
+Gravações rejeitadas desfazem sua transação, preservando todos os dados anteriores.
+Nesta etapa ainda não há movimentações vinculadas a produtos; a proteção desse
+histórico será adicionada junto à tabela de movimentações.
 
 ## Testes automatizados
 
@@ -237,6 +345,10 @@ preservação de dados em falhas, respostas de erro e reversão de migrações.
 Também confere as restrições de unicidade diretamente no PostgreSQL, os dígitos
 verificadores de CNPJs numéricos/alfanuméricos e a preservação de categorias ao
 reverter e reaplicar apenas a migração de fornecedores.
+Para produtos, cobre preços e seus limites, SKU, integridade dos relacionamentos,
+bloqueio de exclusão de categorias/fornecedores, preservação de saldo e data,
+combinação de filtros e migração sem perder os cadastros anteriores. Os cenários
+de filtro preparam saldos diretamente no schema temporário de teste.
 
 Para conferir se os modelos correspondem às migrações aplicadas:
 
@@ -261,6 +373,7 @@ O resultado fica na aba **Actions** do repositório após o push.
 | `app/schemas.py` | Corpos de entrada e saída Pydantic |
 | `app/routers/categories.py` | Endpoints de categorias e transações |
 | `app/routers/suppliers.py` | Endpoints de fornecedores e tratamento de duplicatas |
+| `app/routers/products.py` | CRUD de produtos, filtros e tratamento de vínculos inválidos |
 | `app/validators.py` | Cálculo dos dígitos do CNPJ e validação de telefone |
 | `app/errors.py` | Respostas para erros de banco |
 | `migrations/` | Histórico da estrutura do banco |
@@ -278,7 +391,6 @@ O resultado fica na aba **Actions** do repositório após o push.
 
 ## Próximas etapas
 
-1. Produtos, relacionamentos, preços e estoque mínimo.
-2. Movimentações imutáveis com atualização transacional do saldo.
-3. Consultas por estoque mínimo, período e fornecedor.
-4. Padronização de erros, logs estruturados e ampliação dos testes.
+1. Movimentações imutáveis com atualização transacional do saldo.
+2. Consultas de movimentações por período e fornecedor.
+3. Padronização de erros, logs estruturados e ampliação dos testes.
