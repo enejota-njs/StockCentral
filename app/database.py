@@ -1,4 +1,7 @@
-from sqlalchemy import URL, create_engine
+from collections.abc import Generator
+
+from sqlalchemy import URL, MetaData, create_engine
+from sqlalchemy.orm import DeclarativeBase, Session
 
 from app.config import settings
 
@@ -17,3 +20,20 @@ engine = create_engine(
     pool_pre_ping=True,
     connect_args={"connect_timeout": 5},
 )
+
+
+class Base(DeclarativeBase):
+    metadata = MetaData(
+        naming_convention={
+            "pk": "pk_%(table_name)s",
+            "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+            "uq": "uq_%(table_name)s_%(column_0_name)s",
+            "ck": "ck_%(table_name)s_%(constraint_name)s",
+            "ix": "ix_%(table_name)s_%(column_0_name)s",
+        }
+    )
+
+
+def get_session() -> Generator[Session, None, None]:
+    with Session(engine) as session:
+        yield session
