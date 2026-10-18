@@ -7,6 +7,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import engine
 from app.errors import database_error_handler
 from app.routers.categories import router as categories_router
+from app.routers.suppliers import router as suppliers_router
 
 
 logger = logging.getLogger(__name__)
@@ -14,6 +15,7 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="StockCentral API")
 app.add_exception_handler(SQLAlchemyError, database_error_handler)
 app.include_router(categories_router)
+app.include_router(suppliers_router)
 
 
 @app.get("/health")

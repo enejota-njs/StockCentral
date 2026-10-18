@@ -5,8 +5,8 @@ API de gerenciamento de estoque desenvolvida para o desafio Back-End da Ecomp Jr
 ## Etapa atual
 
 A API possui verificações de funcionamento, conexão com PostgreSQL e CRUD de
-categorias. Há migração da tabela e testes automatizados com PostgreSQL real.
-Fornecedores, produtos, movimentações e consultas de estoque serão implementados
+categorias e fornecedores. Há migrações das tabelas e testes automatizados com PostgreSQL real.
+Produtos, movimentações e consultas de estoque serão implementados
 nas próximas etapas. Autenticação ainda não está implementada.
 
 ## Tecnologias
@@ -156,6 +156,68 @@ O Swagger documenta os corpos, parâmetros e respostas de cada rota. Os detalhes
 de exceções de banco não são enviados ao cliente. A padronização completa de
 erros e os logs estruturados serão aprimorados nas próximas etapas.
 
+## Rotas de fornecedores
+
+| Método | Caminho | Sucesso |
+| --- | --- | --- |
+| POST | `/fornecedores` | 201, fornecedor criado |
+| GET | `/fornecedores?offset=0&limit=50` | 200, lista ordenada por ID |
+| GET | `/fornecedores/{supplier_id}` | 200, fornecedor encontrado |
+| PUT | `/fornecedores/{supplier_id}` | 200, fornecedor atualizado |
+| DELETE | `/fornecedores/{supplier_id}` | 204, corpo vazio |
+
+POST e PUT recebem os quatro campos abaixo. PUT substitui os dados do fornecedor;
+todos os campos são obrigatórios. Exemplo com dados para demonstração:
+
+```json
+{
+  "nome": "Fornecedor de exemplo",
+  "cnpj": "12.ABC.345/01DE-35",
+  "email": "contato@example.com",
+  "telefone": "(75) 99999-1234"
+}
+```
+
+A resposta inclui `id`, gerado pelo banco, e os quatro campos. A listagem retorna
+um array ou `[]`. Os limites de paginação são os mesmos das categorias.
+
+- **Nome:** 1 a 150 caracteres, com espaços nas pontas removidos. Nomes de
+  fornecedores podem se repetir; CNPJ e email identificam as duplicatas.
+- **CNPJ:** aceita formato numérico ou alfanumérico, sem pontuação ou com a máscara
+  completa `XX.XXX.XXX/XXXX-XX`. Valida os dois dígitos verificadores e salva os
+  14 caracteres sem pontuação, com letras maiúsculas. Isso não consulta a situação
+  cadastral da empresa. O algoritmo e o exemplo alfanumérico seguem o
+  [manual de DV da Receita Federal](https://www.gov.br/receitafederal/pt-br/centrais-de-conteudo/publicacoes/documentos-tecnicos/cnpj/manual-dv-cnpj.pdf).
+- **Email:** usa `EmailStr` do Pydantic e a dependência `email-validator` para
+  validar o formato. O sistema salva em minúsculas e considera endereços iguais
+  mesmo que tenham diferenças de maiúsculas/minúsculas. Não verifica a existência
+  da caixa de email. Limite de 254 caracteres após a validação.
+- **Telefone:** texto de até 30 caracteres, contendo de 8 a 15 dígitos. Aceita
+  espaços, parênteses, ponto, hífen e `+` no início. Preserva a formatação e remove
+  espaços nas pontas. Não consulta operadoras nem valida se o número existe.
+- **Unicidade:** o PostgreSQL impede CNPJ duplicado e email duplicado sem
+  diferenciar maiúsculas/minúsculas, inclusive em gravações simultâneas. A API
+  normaliza o CNPJ antes da gravação; o banco exige seu formato sem máscara.
+- Campos desconhecidos, campos ausentes ou valores inválidos retornam **422**.
+  IDs inexistentes retornam **404**. CNPJ ou email já utilizado retorna **409**, com
+  uma mensagem indicando o campo. Uma edição rejeitada mantém os dados anteriores.
+- A relação com produtos será criada na próxima etapa. Quando houver vínculos
+  protegidos por chave estrangeira, a exclusão retornará **409**.
+
+### Aplicando esta etapa em uma instalação existente
+
+No **PowerShell do VS Code**, na **raiz do projeto**, com o banco em execução:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m alembic upgrade head
+```
+
+O primeiro comando instala também a dependência de validação de email. O segundo
+aplica a migração `0002`, que cria `fornecedores`, preservando `categorias`.
+Não precisa entrar na pasta `.venv`: o caminho chama diretamente o Python dela.
+Inicie a API conforme as instruções anteriores e procure **Fornecedores** em `/docs`.
+
 ## Testes automatizados
 
 Com PostgreSQL em execução e `.env` configurado, no PowerShell:
@@ -172,7 +234,9 @@ isso. Não execute esses testes contra um banco de produção.
 
 A suíte cobre CRUD, duplicatas, limites de nomes, entradas inválidas, paginação,
 preservação de dados em falhas, respostas de erro e reversão de migrações.
-Também confere a restrição de unicidade diretamente no PostgreSQL.
+Também confere as restrições de unicidade diretamente no PostgreSQL, os dígitos
+verificadores de CNPJs numéricos/alfanuméricos e a preservação de categorias ao
+reverter e reaplicar apenas a migração de fornecedores.
 
 Para conferir se os modelos correspondem às migrações aplicadas:
 
@@ -196,6 +260,8 @@ O resultado fica na aba **Actions** do repositório após o push.
 | `app/models.py` | Tabelas e restrições SQLAlchemy |
 | `app/schemas.py` | Corpos de entrada e saída Pydantic |
 | `app/routers/categories.py` | Endpoints de categorias e transações |
+| `app/routers/suppliers.py` | Endpoints de fornecedores e tratamento de duplicatas |
+| `app/validators.py` | Cálculo dos dígitos do CNPJ e validação de telefone |
 | `app/errors.py` | Respostas para erros de banco |
 | `migrations/` | Histórico da estrutura do banco |
 | `tests/` | Fixtures isoladas e cenários de integração |
@@ -212,8 +278,7 @@ O resultado fica na aba **Actions** do repositório após o push.
 
 ## Próximas etapas
 
-1. Fornecedores, incluindo CNPJ e email únicos.
-2. Produtos, relacionamentos, preços e estoque mínimo.
-3. Movimentações imutáveis com atualização transacional do saldo.
-4. Consultas por estoque mínimo, período e fornecedor.
-5. Padronização de erros, logs estruturados e ampliação dos testes.
+1. Produtos, relacionamentos, preços e estoque mínimo.
+2. Movimentações imutáveis com atualização transacional do saldo.
+3. Consultas por estoque mínimo, período e fornecedor.
+4. Padronização de erros, logs estruturados e ampliação dos testes.
