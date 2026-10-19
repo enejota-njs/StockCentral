@@ -72,3 +72,26 @@ class Product(Base):
         CheckConstraint("quantidade_em_estoque >= 0", name="estoque_nao_negativo"),
         CheckConstraint("estoque_minimo >= 0", name="estoque_minimo_nao_negativo"),
     )
+
+
+class StockMovement(Base):
+    __tablename__ = "movimentacoes"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(7), nullable=False)
+    quantidade: Mapped[int] = mapped_column(nullable=False)
+    data: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), index=True
+    )
+    produto_id: Mapped[int] = mapped_column(
+        ForeignKey("produtos.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+    # Preserva o fornecedor da movimentacao mesmo se o produto mudar de fornecedor.
+    fornecedor_id: Mapped[int] = mapped_column(
+        ForeignKey("fornecedores.id", ondelete="RESTRICT"), nullable=False, index=True
+    )
+
+    __table_args__ = (
+        CheckConstraint("tipo IN ('entrada', 'saida')", name="tipo_valido"),
+        CheckConstraint("quantidade > 0", name="quantidade_positiva"),
+    )
