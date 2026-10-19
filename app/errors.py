@@ -10,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSONResponse:
     logger.error(
-        "Erro de banco na rota %s: %s", request.url.path, type(exc).__name__
+        "Erro ao acessar o banco: %s.", type(exc).__name__,
+        extra={"error_type": type(exc).__name__},
     )
     if isinstance(exc, OperationalError):
         return JSONResponse(
@@ -19,3 +20,8 @@ async def database_error_handler(request: Request, exc: SQLAlchemyError) -> JSON
     return JSONResponse(
         status_code=500, content={"detail": "Erro interno ao acessar o banco de dados."}
     )
+
+
+async def unexpected_error_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.error("Erro inesperado na aplicacao.", extra={"error_type": type(exc).__name__})
+    return JSONResponse(status_code=500, content={"detail": "Erro interno do servidor."})

@@ -6,22 +6,6 @@ from sqlalchemy import select, text
 from app.models import StockMovement
 
 
-@pytest.fixture
-def stock_product(client):
-    category = client.post("/categorias", json={"nome": "Papelaria"}).json()
-    supplier = client.post("/fornecedores", json={
-        "nome": "Fornecedor", "cnpj": "12ABC34501DE35",
-        "email": "contato@example.com", "telefone": "12345678",
-    }).json()
-    response = client.post("/produtos", json={
-        "nome": "Caneta", "sku": "CANETA-001", "preco_custo": "2.50",
-        "preco_venda": "4.90", "estoque_minimo": 5,
-        "categoria_id": category["id"], "fornecedor_id": supplier["id"],
-    })
-    assert response.status_code == 201
-    return response.json()
-
-
 def test_entries_and_exits_update_balance_and_history(client, stock_product, migrated_connection):
     connection, _ = migrated_connection
     payload = {"produto_id": stock_product["id"], "tipo": "entrada", "quantidade": 8}

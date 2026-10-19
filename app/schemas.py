@@ -1,8 +1,11 @@
-from typing import Annotated, Literal
+from typing import Annotated, Literal, Self
 from datetime import datetime
 from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, StringConstraints, field_validator
+from pydantic import (
+    AwareDatetime, BaseModel, ConfigDict, EmailStr, Field, StringConstraints,
+    field_validator, model_validator,
+)
 
 from app.validators import validate_cnpj, validate_phone
 
@@ -131,3 +134,31 @@ class StockMovementRead(BaseModel):
     tipo: Literal["entrada", "saida"]
     quantidade: int
     data: datetime
+
+
+class StockMovementFilters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    offset: int = Field(default=0, ge=0, description="Quantidade de registros a pular.")
+    limit: int = Field(default=50, ge=1, le=100, description="Tamanho da pagina.")
+    produto_id: int | None = Field(default=None, gt=0, le=2147483647)
+    fornecedor_id: int | None = Field(
+        default=None, gt=0, le=2147483647,
+        description="Fornecedor registrado na movimentacao, mesmo apos trocar o fornecedor do produto.",
+    )
+    tipo: Literal["entrada", "saida"] | None = None
+    data_inicio: AwareDatetime | None = Field(
+        default=None, description="Inicio inclusivo, com fuso horario.",
+        examples=["2026-10-19T00:00:00-03:00"],
+    )
+    data_fim: AwareDatetime | None = Field(
+        default=None, description="Fim inclusivo, com fuso horario.",
+        examples=["2026-10-19T23:59:59.999999-03:00"],
+    )
+
+    @model_validator(mode="after")
+    def validate_period(self) -> Self:
+        if self.data_inicio is not None and self.data_fim is not None:
+            if self.data_inicio > self.data_fim:
+                raise ValueError("data_inicio deve ser anterior ou igual a data_fim.")
+        return self
