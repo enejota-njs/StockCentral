@@ -128,23 +128,25 @@ A cópia do `.env` também é feita somente na primeira configuração.
 
 ## Modelo de dados e regras de negócio
 
-```mermaid
-erDiagram
-    CATEGORIA ||--o{ PRODUTO : classifica
-    FORNECEDOR ||--o{ PRODUTO : fornece
-    PRODUTO ||--o{ MOVIMENTACAO : possui
-    FORNECEDOR ||--o{ MOVIMENTACAO : registrado_no_historico
-```
+As categorias agrupam os produtos. Uma categoria pode reunir vários produtos,
+mas cada produto pertence a uma única categoria.
 
-- Cada produto pertence a uma categoria e a um fornecedor.
+Cada fornecedor pode estar associado a vários produtos. No cadastro de cada
+produto, há um único fornecedor associado.
+
+Cada movimentação registra uma entrada ou saída de um único produto. Um produto
+pode ter várias movimentações, formando seu histórico de estoque. A movimentação
+também guarda o fornecedor associado ao produto no momento da operação. Se o
+fornecedor do produto mudar depois, o histórico mantém o fornecedor original.
+
+As regras de negócio são:
+
 - Categorias têm nome único, sem distinguir maiúsculas/minúsculas.
 - Fornecedores têm CNPJ e email únicos. A comparação de email ignora maiúsculas/minúsculas.
 - Produtos têm SKU único, salvo em maiúsculas, e preços com duas casas decimais.
 - Produtos começam com saldo zero. Apenas movimentações alteram o saldo pela API.
 - Uma entrada soma ao saldo; uma saída subtrai e exige quantidade disponível.
 - Movimentações são criadas e consultadas; a API não permite editá-las ou excluí-las.
-- O fornecedor é copiado do produto para a movimentação. Uma troca posterior no
-  cadastro do produto preserva o fornecedor das operações anteriores.
 - Chaves estrangeiras com `RESTRICT` impedem excluir categorias com produtos,
   fornecedores com produtos ou histórico e produtos com movimentações.
 
