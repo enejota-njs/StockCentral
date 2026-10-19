@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from datetime import datetime
 from decimal import Decimal
 
@@ -112,3 +112,22 @@ class ProductRead(BaseModel):
     data_cadastro: datetime
     categoria_id: int
     fornecedor_id: int
+
+
+class StockMovementInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    produto_id: ReferenceId = Field(examples=[1])
+    tipo: Literal["entrada", "saida"]
+    quantidade: Annotated[int, Field(strict=True, gt=0, le=2147483647)] = Field(examples=[5])
+
+
+class StockMovementRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    produto_id: int
+    fornecedor_id: int
+    tipo: Literal["entrada", "saida"]
+    quantidade: int
+    data: datetime
